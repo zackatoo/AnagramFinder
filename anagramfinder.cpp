@@ -10,7 +10,6 @@
 /*
  * ASSUMPTIONS
  *  - Single newline character between each word (no other/extra whitespace).
- *  - No duplicate words.
  *  - Valid words are only between A-Z and a-z. Anything else gets ignored.
  *  - No valigrind (stdio.h does not free all of their file allocations, so I will always be 6 frees short).
  */
@@ -23,7 +22,8 @@
  *      - Ignores any strings which are a single character since they cannot have anagrams
  *      - Ignores any strings which are not completely alphabetic
  * - Creates a duplicate dictionary which all strings are sorted in alphabetic order
- *      - 
+ *      - Makes the mallocs in the createDuplicateDictionary function. Expected to free later using freeDictionary().
+ *      - Uses insertion sort, best for small amount of data
  * - Finds anagrams based off if two sorted strings are the same
  *      - Stores anagrams in a vector of Anagram structs
  *      - Each anagram struct is sorted alphabetically relaive to the other words
@@ -78,59 +78,87 @@ struct Dictionary {
 };
 
 struct Anagram {
+    // The words in these anagrams are not malloc-ed so do not free them, they belong to a dictionary
+    // These words are not stored in any sorted order
     vector<Word> words;
-
-    void insert(Word& newWord)
-    {
-
-    }
 };
 
-void findAnagrams(const vector<Word>& words, unsigned char length, vector<Anagram>& allAnagrams)
+void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, const unsigned char length, vector<Anagram>& allAnagrams)
 {
-    char mask_toLower = 1 << 5;
+    constexpr char mask_toLower = 1 << 5;
     const size_t size = words.size();
-    int intSize = sizeof(int);
-    int visitedSize = size % intSize == 0 ? size / intSize : size / intSize + 1;
+    const int intSize = sizeof(int);
+    bool isAnagram = true;
+
+    // Visisted size is ceil(size / intSize)
+    const int visitedSize = size % intSize == 0 ? size / intSize : size / intSize + 1;
+
     // Visited is a bit vector of the anagrams which have already been found so we don't touch them again
-    int* visited = new int[visitedSize];
-    for (int i = 0; i < visitedSize; ++i)
-    {
-        visited[i] = 0;
-    }
+    // The () at the end of the array just zeros the array
+    int* visited = new int[visitedSize]();
 
     for (size_t i = 0; i < size; ++i)
     {
-        // Short circuit if statement when i is 0 because it can't have found any anagrams yet
-        if (i != 0 && visited[i / intSize] & (1 << i % intSize)) continue;
-        Word current = words[i];
-        for (size_t j = i + 1; j < visitedSize; ++j)
+        // If this current word was already found as an anagram of another word, no point in checking it against all other words
+        if (visited[i / intSize] & (1 << i % intSize)) continue;
+
+        Anagram anagram;
+        Word current = sortedWords[i];
+        for (size_t j = i + 1; j < size; ++j)
         {
+            // If this current word was already found as an anagram of another word, no point in checking it against the word
             if (visited[j / intSize] & (1 << j % intSize)) continue;
 
+            char* target = current.chars;
+            char* compare = sortedWords[j].chars;
+            isAnagram = true;
+            for (unsigned char k = 0; k < length; ++k)
+            {
+                if (target[k] != compare[k])
+                {
+                    isAnagram = false;
+                    break;
+                }
+            }
+
+            if (isAnagram)
+            {
+                anagram.words.push_back(words[i]);
+                visited[j / intSize] &= 1 << j % intSize;
+            }
+        }
+        if (anagram.words.size() != 0)
+        {
+            allAnagrams.push_back(anagram);
         }
     }
 
     delete[] visited;
 }
 
-void findAnagrams(Dictionary* dic)
+vector<vector<Anagram>> findAnagrams(Dictionary* dic, Dictionary* sorted, vector<size_t>& sizes, size_t& numAnagrams)
 {
     Width** widths = dic->widths;
-    vector<Anagram> allAnagrams;
-    for (int i = 0; i <= dic->length; ++i)
+    Width** sortedWidths = sorted->widths;
+    vector< vector<Anagram> > myAnagrams;
+    for (int i = 0; i <= sorted->length; ++i)
     {
         if (widths[i] != nullptr)
         {
-            findAnagrams(widths[i]->words, i, allAnagrams);
+            vector<Anagram> allAnagrams;
+            findAnagrams(widths[i]->words, sortedWidths[i]->words, i, allAnagrams);
+            myAnagrams.push_back(allAnagrams);
+            sizes.push_back(allAnagrams.size());
+            numAnagrams += allAnagrams.size();
         }
     }
+    return myAnagrams;
 }
 
 void createSortedDictionary(Dictionary* dic, Dictionary* sorted)
 {
     // Creates a duplicate dictionary in which each word is sorted in alphabetical order
-    for (unsigned char i = 0; i < dic->length; ++i)
+    for (unsigned char i = 0; i <= dic->length; ++i)
     {
         if (dic->widths[i] != nullptr)
         {
@@ -142,23 +170,30 @@ void createSortedDictionary(Dictionary* dic, Dictionary* sorted)
             
             for (size_t j = 0; j < size; ++j)
             {
-                // Perform insertion sort for each word to make it alphabetica
+                // Perform insertion sort for each word to make it alphabetical
                 char* chars = (char*)malloc(i);
                 char* unsortedChars = unsortedWords[j].chars;
-                for (unsigned char k = 0; k < i; ++k)
+                chars[0] = unsortedChars[0];
+                for (unsigned char k = 1; k < i; ++k)
                 {
-                    char key = unsortedChars[k];
+                    chars[k] = unsortedChars[k];
                     char temp;
-                    for (unsigned char l = k; l > 0 && chars[l-1] > chars[l]; ++l)
+                    for (unsigned char l = k; l > 0 && chars[l-1] > chars[l]; --l)
                     {
                         temp = chars[l];
                         chars[l] = chars[l-1];
                         chars[l-1] = temp;
                     }
                 }
-                sortedWords[j].chars = chars;
+                //TODO: remove all affiliations of len
+                sortedWords.push_back(Word(chars, unsortedWords[j].len));
             }
             sorted->widths[i]->words = sortedWords;
+            
+            for (size_t j = 0; j < size; ++j)
+            {
+                sorted->widths[i]->words[j].sprint();
+            }
         }
     }
 }
@@ -176,6 +211,53 @@ void printDictionary(Dictionary* dic)
             {
                 curWidth->words[j].sprint();
             }
+        }
+    }
+}
+
+void printAnagrams(const vector<vector<Anagram>>& allAnagrams, const vector<size_t>& sizes, size_t numAnagrams)
+{
+    if (allAnagrams.size() == 0)
+    {
+        cout << "No anagrams found." << endl;
+        return;
+    }
+    
+    const char* s = "Max Anagrams: ";
+    for (unsigned char i = 0; i < 13; ++i)
+    {
+        putchar(s[i]);
+    }
+
+    // Since there are at max 100,000 words we can use 5 characters to store it
+    char number[5];
+    unsigned char index = 5;
+    do
+    {
+        --index;
+        number[index] = (numAnagrams % 10) + '0';
+    } while (numAnagrams /= 10);
+    
+    for (unsigned char i = index; i < 5; ++i)
+    {
+        putchar(number[i]);
+    }
+    putchar('\n');
+
+    for (size_t i = 0; i < sizes.size(); ++i)
+    {
+        for (size_t k = 0; k < allAnagrams[i].size(); ++k)
+        {
+            for (size_t l = 0; l < allAnagrams[i][k].words.size(); ++l)
+            {
+                char* str = allAnagrams[i][k].words[l].chars;
+                for (unsigned char j = 0; j < sizes[i]; ++j)
+                {
+                    putchar(str[j]);
+                }
+                putchar('\n');
+            }
+            putchar('\n');
         }
     }
 }
@@ -204,8 +286,7 @@ void readFile(FILE* file, Dictionary* dic)
         }
         if (c == '\n')
         {
-            // Since there are no duplicates, a word of length 1 cannot have anagrams, so ignore them.
-            if (valid && length > 1)
+            if (valid)
             {
                 if (dic->widths[length] == nullptr)
                 {
@@ -273,6 +354,10 @@ void readFile(FILE* file, Dictionary* dic)
         if (dic->widths[length] == nullptr)
         {
             dic->widths[length] = new Width;
+            if (length > dic->length)
+            {
+                dic->length = length;
+            }
         }
 
         if (big)
@@ -338,7 +423,7 @@ int main(int argc, char* argv[])
         fclose(file);
 
         Dictionary sorted;
-        sorted.length = dic.length
+        sorted.length = dic.length;
         sorted.widths = new Width*[dic.length + 1];
         for (unsigned char i = 0; i <= sorted.length; ++i)
         {
@@ -347,8 +432,12 @@ int main(int argc, char* argv[])
 
         createSortedDictionary(&dic, &sorted);
 
-        findAnagrams(&dic);
         printDictionary(&dic);
+        printDictionary(&sorted);
+        size_t numAnagrams = 0;
+        vector<size_t> sizes;
+        auto ana = findAnagrams(&dic, &sorted, sizes, numAnagrams);
+        printAnagrams(ana, sizes, numAnagrams);
         freeDictionary(&dic);
         freeDictionary(&sorted);
     }
