@@ -60,7 +60,7 @@ struct Word {
         len = l;
     }
 
-    void sprint()
+    void sprint() const
     {
         print(chars, len);
     }
@@ -89,6 +89,7 @@ void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, co
     const size_t size = words.size();
     const int intSize = sizeof(int);
     bool isAnagram = true;
+    bool dupAnagrams = true;
 
     // Visisted size is ceil(size / intSize)
     const int visitedSize = size % intSize == 0 ? size / intSize : size / intSize + 1;
@@ -100,21 +101,22 @@ void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, co
     for (size_t i = 0; i < size; ++i)
     {
         // If this current word was already found as an anagram of another word, no point in checking it against all other words
-        if (visited[i / intSize] & (1 << i % intSize)) continue;
+        if (visited[i / intSize] & (1 << (i % intSize))) continue;
 
         Anagram anagram;
         Word current = sortedWords[i];
+        dupAnagrams = true;
         for (size_t j = i + 1; j < size; ++j)
         {
-            // If this current word was already found as an anagram of another word, no point in checking it against the word
-            if (visited[j / intSize] & (1 << j % intSize)) continue;
+            // No point in checking it against this word
+            if (visited[j / intSize] & (1 << (j % intSize))) continue;
 
             char* target = current.chars;
             char* compare = sortedWords[j].chars;
             isAnagram = true;
             for (unsigned char k = 0; k < length; ++k)
             {
-                if (target[k] != compare[k])
+                if ((target[k] | mask_toLower) != (compare[k] | mask_toLower))
                 {
                     isAnagram = false;
                     break;
@@ -123,8 +125,14 @@ void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, co
 
             if (isAnagram)
             {
-                anagram.words.push_back(words[i]);
-                visited[j / intSize] &= 1 << j % intSize;
+                if (dupAnagrams) 
+                {
+                    anagram.words.push_back(words[i]);
+                    dupAnagrams = false;
+                }
+                anagram.words.push_back(words[j]);
+
+                visited[j / intSize] |= 1 << (j % intSize);
             }
         }
         if (anagram.words.size() != 0)
@@ -147,9 +155,12 @@ vector<vector<Anagram>> findAnagrams(Dictionary* dic, Dictionary* sorted, vector
         {
             vector<Anagram> allAnagrams;
             findAnagrams(widths[i]->words, sortedWidths[i]->words, i, allAnagrams);
-            myAnagrams.push_back(allAnagrams);
-            sizes.push_back(allAnagrams.size());
-            numAnagrams += allAnagrams.size();
+            if (allAnagrams.size() != 0)
+            {
+                myAnagrams.push_back(allAnagrams);
+                sizes.push_back(i);
+                numAnagrams += allAnagrams.size();
+            }
         }
     }
     return myAnagrams;
@@ -189,11 +200,6 @@ void createSortedDictionary(Dictionary* dic, Dictionary* sorted)
                 sortedWords.push_back(Word(chars, unsortedWords[j].len));
             }
             sorted->widths[i]->words = sortedWords;
-            
-            for (size_t j = 0; j < size; ++j)
-            {
-                sorted->widths[i]->words[j].sprint();
-            }
         }
     }
 }
@@ -224,7 +230,7 @@ void printAnagrams(const vector<vector<Anagram>>& allAnagrams, const vector<size
     }
     
     const char* s = "Max Anagrams: ";
-    for (unsigned char i = 0; i < 13; ++i)
+    for (unsigned char i = 0; i < 14; ++i)
     {
         putchar(s[i]);
     }
@@ -243,21 +249,26 @@ void printAnagrams(const vector<vector<Anagram>>& allAnagrams, const vector<size
         putchar(number[i]);
     }
     putchar('\n');
-
-    for (size_t i = 0; i < sizes.size(); ++i)
+    size_t theSizes = sizes.size() - 1;
+    for (size_t i = 0; i <= theSizes; ++i)
     {
         for (size_t k = 0; k < allAnagrams[i].size(); ++k)
         {
-            for (size_t l = 0; l < allAnagrams[i][k].words.size(); ++l)
+            size_t lastSize = allAnagrams[i][k].words.size() - 1;
+            for (size_t l = 0; l <= lastSize; ++l)
             {
                 char* str = allAnagrams[i][k].words[l].chars;
                 for (unsigned char j = 0; j < sizes[i]; ++j)
                 {
                     putchar(str[j]);
                 }
+                if (l < lastSize) putchar('\n');
+            }
+            if (i != theSizes) 
+            {
+                putchar('\n');
                 putchar('\n');
             }
-            putchar('\n');
         }
     }
 }
@@ -401,14 +412,14 @@ int main(int argc, char* argv[])
 
     if (argc != 2)
     {
-        cout << "Usage: ./anagramfinder <dictionary.txt>\n";
+        cout << "Usage: ./anagramfinder <dictionary file>\n";
     }
 
     FILE* file;
     file = fopen(argv[1], "r");
     if (file == NULL)
     {
-        cerr << "Error opening file.\n";
+        cerr << "Error: file'" << argv[1] << "' not found.\n";
     }
     else
     {
@@ -432,8 +443,8 @@ int main(int argc, char* argv[])
 
         createSortedDictionary(&dic, &sorted);
 
-        printDictionary(&dic);
-        printDictionary(&sorted);
+        //printDictionary(&dic);
+        //printDictionary(&sorted);
         size_t numAnagrams = 0;
         vector<size_t> sizes;
         auto ana = findAnagrams(&dic, &sorted, sizes, numAnagrams);
