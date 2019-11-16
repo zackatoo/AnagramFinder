@@ -5,6 +5,7 @@
  * Date          : November 10th, 2019
  * Last modified : November 15th, 2019
  * Description   : Finds anagrams using a user provided dictionary
+ * Pledge        : I pledge my honor that I have abided by the Stevens Honor System.
  ******************************************************************************/
 
 /*
@@ -40,29 +41,13 @@ using namespace std;
 #define MAX_CHARS 30
 #define SMALL_CHARS 10
 
-void print(char* str, unsigned char len)
-{
-    for (unsigned char i = 0; i < len; i++)
-    {
-        cout << str[i];
-    }
-    cout << endl;
-}
-
 // Ghetto (no hr pls) string immplementation
 struct Word {
     char* chars;
-    unsigned char len;
 
-    Word(char* _chars, unsigned char l)
+    Word(char* _chars)
     {
         chars = _chars;
-        len = l;
-    }
-
-    void sprint() const
-    {
-        print(chars, len);
     }
 };
 
@@ -79,11 +64,112 @@ struct Dictionary {
 
 struct Anagram {
     // The words in these anagrams are not malloc-ed so do not free them, they belong to a dictionary
-    // These words are not stored in any sorted order
+    // These words are stored in alphabetic order relative to each other
     vector<Word> words;
+    unsigned char length;
+
+    void insert(Word newWord)
+    {
+        // Inserts newWord into the words vector so that words is in alphabetical order
+        size_t size = words.size() - 1;
+        for (size_t i = 0; i <= size; ++i)
+        {
+            bool insert = true;
+            char* chars = words[i].chars;
+
+            for (unsigned char j = 0; j < length; ++j)
+            {
+                if (chars[j] < newWord.chars[j])
+                {
+                    insert = false;
+                    break;
+                }
+                else if (chars[j] > newWord.chars[j])
+                {
+                    break;
+                }
+            }
+            if (insert)
+            {
+                // Writing a custom insert method could be faster, but I'm tired.
+                words.insert(words.begin() + i, newWord);
+                break;
+            }
+            if (i == size)
+            {
+                words.insert(words.end(), newWord);
+                break;
+            }
+        }
+    }
 };
 
-void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, const unsigned char length, vector<Anagram>& allAnagrams)
+unsigned char min(unsigned char x, unsigned char y)
+{
+    return x < y ? x : y;
+}
+
+void insert(vector<Anagram>& allAnagrams, const Anagram& toInsert)
+{
+    // Inserts an anagram into a vector in alphabetical order based off the first word in the anagram
+    size_t theSize = allAnagrams.size();
+    if (theSize == 0) 
+    {
+        allAnagrams.push_back(toInsert);
+    }
+    else
+    {
+        --theSize;
+        for (size_t i = 0; i <= theSize; ++i)
+        {
+            bool insert = true;
+            bool same = true;
+            char* chars = allAnagrams[i].words[0].chars;
+            char* insertChars = toInsert.words[0].chars;
+            for (unsigned char j = 0; j < min(allAnagrams[i].length, toInsert.length); ++j)
+            {
+                if (chars[j] < insertChars[j])
+                {
+                    insert = false;
+                    same = false;
+                    break;
+                }
+                else if (chars[j] > insertChars[j])
+                {
+                    same = false;
+                    break;
+                }
+            }
+            if (insert && same && allAnagrams[i].length < toInsert.length)
+            {
+                // If the words are the same and insert's length is larger, then run again to see if it should insert later
+                if (i == theSize)
+                {
+                    allAnagrams.insert(allAnagrams.end(), toInsert);
+                }
+                continue;
+            }
+            else if (insert && same && allAnagrams[i].length > toInsert.length)
+            {
+                cout << "inserted before" << endl;
+                allAnagrams.insert(allAnagrams.begin() + i - 1, toInsert);
+                break;
+            }
+            else if (insert)
+            {
+                allAnagrams.insert(allAnagrams.begin() + i, toInsert);
+                break;
+            }
+            
+            if (i == theSize)
+            {
+                allAnagrams.insert(allAnagrams.end(), toInsert);
+            }
+        }
+    }
+}
+
+void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, const unsigned char length, vector<Anagram>& allAnagrams, size_t& maxAnagrams)
 {
     constexpr char mask_toLower = 1 << 5;
     const size_t size = words.size();
@@ -127,43 +213,48 @@ void findAnagrams(const vector<Word>& words, const vector<Word>& sortedWords, co
             {
                 if (dupAnagrams) 
                 {
+                    // push_back for the first time because insert doesn't work with no elements in the array
                     anagram.words.push_back(words[i]);
+                    anagram.length = length;
                     dupAnagrams = false;
                 }
-                anagram.words.push_back(words[j]);
+                anagram.insert(words[j]);
 
                 visited[j / intSize] |= 1 << (j % intSize);
             }
         }
-        if (anagram.words.size() != 0)
+        size_t anagramSize = anagram.words.size();
+        if (anagramSize != 0)
         {
-            allAnagrams.push_back(anagram);
+            if (anagramSize > maxAnagrams)
+            {
+                maxAnagrams = anagramSize;
+                allAnagrams.clear();
+                insert(allAnagrams, anagram);
+            }
+            else if (anagramSize == maxAnagrams)
+            {
+                insert(allAnagrams, anagram);
+            }
         }
     }
 
     delete[] visited;
 }
 
-vector<vector<Anagram>> findAnagrams(Dictionary* dic, Dictionary* sorted, vector<size_t>& sizes, size_t& numAnagrams)
+vector<Anagram> findAnagrams(Dictionary* dic, Dictionary* sorted, size_t& maxAnagrams)
 {
     Width** widths = dic->widths;
     Width** sortedWidths = sorted->widths;
-    vector< vector<Anagram> > myAnagrams;
+    vector<Anagram> allAnagrams;
     for (int i = 0; i <= sorted->length; ++i)
     {
         if (widths[i] != nullptr)
         {
-            vector<Anagram> allAnagrams;
-            findAnagrams(widths[i]->words, sortedWidths[i]->words, i, allAnagrams);
-            if (allAnagrams.size() != 0)
-            {
-                myAnagrams.push_back(allAnagrams);
-                sizes.push_back(i);
-                numAnagrams += allAnagrams.size();
-            }
+            findAnagrams(widths[i]->words, sortedWidths[i]->words, i, allAnagrams, maxAnagrams);
         }
     }
-    return myAnagrams;
+    return allAnagrams;
 }
 
 void createSortedDictionary(Dictionary* dic, Dictionary* sorted)
@@ -196,40 +287,24 @@ void createSortedDictionary(Dictionary* dic, Dictionary* sorted)
                         chars[l-1] = temp;
                     }
                 }
-                //TODO: remove all affiliations of len
-                sortedWords.push_back(Word(chars, unsortedWords[j].len));
+
+                sortedWords.push_back(Word(chars));
             }
             sorted->widths[i]->words = sortedWords;
         }
     }
 }
 
-void printDictionary(Dictionary* dic)
+void printAnagrams(const vector<Anagram>& allAnagrams, size_t maxAnagrams)
 {
-    // Debug purposes
-    for (int i = 0; i <= dic->length; ++i)
-    {
-        if (dic->widths[i] != nullptr)
-        {
-            Width* curWidth = dic->widths[i];
-            cout << "\nLength: " << i << endl;
-            for (size_t j = 0; j < curWidth->words.size(); ++j)
-            {
-                curWidth->words[j].sprint();
-            }
-        }
-    }
-}
-
-void printAnagrams(const vector<vector<Anagram>>& allAnagrams, const vector<size_t>& sizes, size_t numAnagrams)
-{
-    if (allAnagrams.size() == 0)
+    size_t numAnagrams = allAnagrams.size();
+    if (numAnagrams == 0)
     {
         cout << "No anagrams found." << endl;
         return;
     }
     
-    const char* s = "Max Anagrams: ";
+    const char* s = "Max anagrams: ";
     for (unsigned char i = 0; i < 14; ++i)
     {
         putchar(s[i]);
@@ -241,35 +316,30 @@ void printAnagrams(const vector<vector<Anagram>>& allAnagrams, const vector<size
     do
     {
         --index;
-        number[index] = (numAnagrams % 10) + '0';
-    } while (numAnagrams /= 10);
+        number[index] = (maxAnagrams % 10) + '0';
+    } while (maxAnagrams /= 10);
     
     for (unsigned char i = index; i < 5; ++i)
     {
         putchar(number[i]);
     }
     putchar('\n');
-    size_t theSizes = sizes.size() - 1;
-    for (size_t i = 0; i <= theSizes; ++i)
+
+    --numAnagrams;
+    for (size_t i = 0; i <= numAnagrams; ++i)
     {
-        for (size_t k = 0; k < allAnagrams[i].size(); ++k)
+        size_t thisSize = allAnagrams[i].words.size() - 1;
+        for (size_t j = 0; j <= thisSize; ++j)
         {
-            size_t lastSize = allAnagrams[i][k].words.size() - 1;
-            for (size_t l = 0; l <= lastSize; ++l)
+            char* chars = allAnagrams[i].words[j].chars;
+            for (unsigned char k = 0; k < allAnagrams[i].length; ++k)
             {
-                char* str = allAnagrams[i][k].words[l].chars;
-                for (unsigned char j = 0; j < sizes[i]; ++j)
-                {
-                    putchar(str[j]);
-                }
-                if (l < lastSize) putchar('\n');
+                putchar(chars[k]);
             }
-            if (i != theSizes) 
-            {
-                putchar('\n');
-                putchar('\n');
-            }
+            if (!(i == numAnagrams && j == thisSize)) putchar('\n');
         }
+        // This if statement allows for good branch prediction because it only runs once in the program
+        if (i != numAnagrams) putchar('\n');
     }
 }
 
@@ -310,12 +380,12 @@ void readFile(FILE* file, Dictionary* dic)
                 }
                 if (big)
                 {
-                    dic->widths[length]->words.push_back(Word(bigBuffer, length));
+                    dic->widths[length]->words.push_back(Word(bigBuffer));
                     big = false;
                 }
                 else
                 {
-                    dic->widths[length]->words.push_back(Word(buffer, length));
+                    dic->widths[length]->words.push_back(Word(buffer));
                     buffer = (char*)malloc(SMALL_CHARS);
                 }
             }
@@ -373,13 +443,13 @@ void readFile(FILE* file, Dictionary* dic)
 
         if (big)
         {
-            dic->widths[length]->words.push_back(Word(bigBuffer, length));
+            dic->widths[length]->words.push_back(Word(bigBuffer));
             // Since the last one is a big one, it needs to free the small buffer
             free(buffer);
         }
         else
         {
-            dic->widths[length]->words.push_back(Word(buffer, length));
+            dic->widths[length]->words.push_back(Word(buffer));
         }
     }
     else
@@ -413,13 +483,14 @@ int main(int argc, char* argv[])
     if (argc != 2)
     {
         cout << "Usage: ./anagramfinder <dictionary file>\n";
+        return 1;
     }
 
     FILE* file;
     file = fopen(argv[1], "r");
     if (file == NULL)
     {
-        cerr << "Error: file'" << argv[1] << "' not found.\n";
+        cerr << "Error: File '" << argv[1] << "' not found.\n";
     }
     else
     {
@@ -442,13 +513,11 @@ int main(int argc, char* argv[])
         }
 
         createSortedDictionary(&dic, &sorted);
+        size_t maxAnagrams = 0;
+        vector<Anagram> ana = findAnagrams(&dic, &sorted, maxAnagrams);
+        printAnagrams(ana, maxAnagrams);
 
-        //printDictionary(&dic);
-        //printDictionary(&sorted);
-        size_t numAnagrams = 0;
-        vector<size_t> sizes;
-        auto ana = findAnagrams(&dic, &sorted, sizes, numAnagrams);
-        printAnagrams(ana, sizes, numAnagrams);
+        // Even though it's faster to not free the memory I guess we have to otherwise papa valgrind will be disapointed
         freeDictionary(&dic);
         freeDictionary(&sorted);
     }
