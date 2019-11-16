@@ -28,6 +28,7 @@
  * - Finds anagrams based off if two sorted strings are the same
  *      - Stores anagrams in a vector of Anagram structs
  *      - Each anagram struct is sorted alphabetically relaive to the other words
+ * - Prints the largest set of anagrams character by character
  */ 
 
 #include <iostream>
@@ -41,7 +42,7 @@ using namespace std;
 #define MAX_CHARS 30
 #define SMALL_CHARS 10
 
-// Ghetto (no hr pls) string immplementation
+// Simple string immplementation
 struct Word {
     char* chars;
 
@@ -151,7 +152,6 @@ void insert(vector<Anagram>& allAnagrams, const Anagram& toInsert)
             }
             else if (insert && same && allAnagrams[i].length > toInsert.length)
             {
-                cout << "inserted before" << endl;
                 allAnagrams.insert(allAnagrams.begin() + i - 1, toInsert);
                 break;
             }
